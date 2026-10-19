@@ -107,7 +107,7 @@ Details and design rationale are in [docs/04-notewell-design.md](../docs/04-note
 
 ```bash
 npm test             # unit and integration tests (no models, no network)
-npm run test:live    # downloads Silero and Whisper and transcribes a public-domain clip
+npm run test:live    # real models (Silero, Whisper) and a real OpenAI enhancement; needs OPENAI_API_KEY
 npm run typecheck
 ```
 
