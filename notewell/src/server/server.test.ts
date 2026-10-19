@@ -132,6 +132,46 @@ describe("notewell server", () => {
     expect(saved.body.transcript).toHaveLength(1);
   });
 
+  it("buffers audio sent while models are still loading and rejects a second start", async () => {
+    class SlowEngine extends Engine {
+      override async transcriber() {
+        await new Promise((r) => setTimeout(r, 300));
+        return fakeTranscriber;
+      }
+    }
+    const slow = createApp({
+      engine: new SlowEngine({ energyVad: true }),
+      meetings: new MeetingStore(dir),
+      enhancer: createEnhancer(new OpenAIProvider({ apiKey: "x", baseUrl: mock.url })),
+    });
+    await new Promise<void>((resolve) => slow.listen(0, "127.0.0.1", resolve));
+    const slowBase = `http://localhost:${(slow.address() as AddressInfo).port}`;
+    try {
+      const created = await fetch(`${slowBase}/api/meetings`, { method: "POST", body: "{}" });
+      const meeting = (await created.json()) as Meeting;
+      const ws = new WebSocket(`${slowBase.replace("http", "ws")}/api/meetings/${meeting.id}/live`);
+      const messages: ServerMessage[] = [];
+      ws.on("message", (data) => messages.push(JSON.parse(String(data)) as ServerMessage));
+      await new Promise((resolve) => ws.once("open", resolve));
+      ws.send(JSON.stringify({ type: "start", sampleRates: { microphone: 16000 } }));
+      ws.send(JSON.stringify({ type: "start", sampleRates: { microphone: 16000 } }));
+      // Everything is sent before the engine is ready.
+      const pcm = new Int16Array(16000 * 3);
+      for (let i = 0; i < pcm.length; i++) {
+        pcm[i] = i >= 8000 && i < 32000 ? Math.round(12000 * Math.sin((2 * Math.PI * 220 * i) / 16000)) : 0;
+      }
+      ws.send(encodeAudioFrame("microphone", pcm));
+      ws.send(JSON.stringify({ type: "stop" }));
+      await waitFor(() => messages.some((m) => m.type === "stopped"));
+      ws.close();
+      expect(messages.some((m) => m.type === "error" && m.message === "already recording")).toBe(true);
+      const finals = messages.filter((m) => m.type === "segment" && m.segment.final);
+      expect(finals).toHaveLength(1);
+    } finally {
+      slow.close();
+    }
+  });
+
   it("refuses WebSocket upgrades from foreign origins", async () => {
     const { body: meeting } = await json<Meeting>("/api/meetings", { method: "POST", body: "{}" });
     const ws = new WebSocket(`${base.replace("http", "ws")}/api/meetings/${meeting.id}/live`, {

@@ -10,6 +10,8 @@ import type { Engine } from "./engine.js";
 /** Gap inserted between recording sessions when a meeting is resumed. */
 const RESUME_GAP_MS = 1000;
 const MAX_SAMPLE_RATE = 192000;
+/** Audio kept per source while models load on first use. */
+const MAX_BUFFERED_SECONDS = 120;
 
 /**
  * One recording connection for one meeting. Mirrors the role of Granola's
@@ -22,6 +24,10 @@ export class LiveSession {
   private offsetMs = 0;
   private persistTimer: NodeJS.Timeout | undefined;
   private starting: Promise<void> | undefined;
+  /** Frames that arrive while pipelines are still being created. */
+  private buffered: { source: Source; samples: Float32Array }[] | undefined;
+  private bufferedSamples = new Map<Source, number>();
+  private bufferLimit = new Map<Source, number>();
   private closed = false;
 
   constructor(
@@ -52,9 +58,23 @@ export class LiveSession {
       return this.send({ type: "error", message: "invalid JSON control message" });
     }
     if (message.type === "start") {
-      this.starting = this.start(message.sampleRates).catch((err: Error) => {
-        this.send({ type: "error", message: `could not start transcription: ${err.message}` });
-      });
+      if (this.buffered || this.pipelines.size) {
+        return this.send({ type: "error", message: "already recording" });
+      }
+      // Buffer audio from now on: loading Whisper can take a while the first time.
+      this.buffered = [];
+      this.bufferedSamples.clear();
+      this.bufferLimit.clear();
+      for (const [source, rate] of Object.entries(message.sampleRates ?? {})) {
+        if (typeof rate === "number") this.bufferLimit.set(source as Source, rate * MAX_BUFFERED_SECONDS);
+      }
+      this.starting = this.start(message.sampleRates)
+        .catch((err: Error) => {
+          this.send({ type: "error", message: `could not start transcription: ${err.message}` });
+        })
+        .finally(() => {
+          this.buffered = undefined;
+        });
     } else if (message.type === "stop") {
       void this.stop().then(() => this.send({ type: "stopped" }));
     }
@@ -88,6 +108,10 @@ export class LiveSession {
       pipeline.on("error", (err) => this.send({ type: "error", message: err.message }));
       this.pipelines.set(source, pipeline);
     }
+    // Replay what arrived during model loading, in order, then go live.
+    const pending = this.buffered ?? [];
+    this.buffered = undefined;
+    for (const { source, samples } of pending) this.pipelines.get(source)?.push(samples);
     if (this.closed) return void (await this.stop());
     this.send({ type: "ready", asr: transcriber.name, vad: vadName });
   }
@@ -95,7 +119,16 @@ export class LiveSession {
   private onAudio(data: Uint8Array): void {
     const frame = decodeAudioFrame(data);
     if (!frame) return;
-    this.pipelines.get(frame.source)?.push(int16ToFloat32(frame.pcm));
+    const samples = int16ToFloat32(frame.pcm);
+    if (this.buffered) {
+      const used = this.bufferedSamples.get(frame.source) ?? 0;
+      if (used + samples.length <= (this.bufferLimit.get(frame.source) ?? 0)) {
+        this.buffered.push({ source: frame.source, samples });
+        this.bufferedSamples.set(frame.source, used + samples.length);
+      }
+      return;
+    }
+    this.pipelines.get(frame.source)?.push(samples);
   }
 
   private onSegment(segment: TranscriptSegment): void {
