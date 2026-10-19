@@ -1,0 +1,34 @@
+{
+  "name": "notewell",
+  "version": "0.1.0",
+  "description": "Open, local-first meeting notepad: local Whisper transcription of mic + system audio, and LLM note enhancement. An original implementation inspired by a teardown of Granola.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "bin": {
+    "notewell": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/server/main.ts",
+    "start": "node dist/server/main.js",
+    "cli": "tsx src/cli.ts",
+    "test:live": "vitest run --config vitest.live.config.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
+    "ws": "^8.22.0"
+  }
+}

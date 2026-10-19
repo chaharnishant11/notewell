@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "module": "es2022",
+    "moduleResolution": "bundler",
+    "rootDir": "src/web",
+    "outDir": "dist/web",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "types": []
+  },
+  "include": ["src/web"]
+}
