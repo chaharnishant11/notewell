@@ -11,13 +11,10 @@ declare class AudioWorkletProcessor {
 }
 
 class PcmCaptureProcessor extends AudioWorkletProcessor {
-  private batch: Int16Array;
+  // Kept separately: transferring a batch detaches it, so batch.length reads 0.
+  private readonly batchSize = Math.round(sampleRate / 10);
+  private batch = new Int16Array(this.batchSize);
   private filled = 0;
-
-  constructor() {
-    super();
-    this.batch = new Int16Array(Math.round(sampleRate / 10));
-  }
 
   process(inputs: Float32Array[][]): boolean {
     const channels = inputs[0];
@@ -28,9 +25,9 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
       for (const channel of channels) sum += channel[i]!;
       const s = Math.max(-1, Math.min(1, sum / channels.length));
       this.batch[this.filled++] = s < 0 ? s * 32768 : s * 32767;
-      if (this.filled === this.batch.length) {
+      if (this.filled === this.batchSize) {
         this.port.postMessage(this.batch, [this.batch.buffer]);
-        this.batch = new Int16Array(this.batch.length);
+        this.batch = new Int16Array(this.batchSize);
         this.filled = 0;
       }
     }

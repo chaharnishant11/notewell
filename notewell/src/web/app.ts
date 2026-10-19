@@ -55,13 +55,27 @@ let enhancing: AbortController | undefined;
 const recorder = new Recorder({
   onMessage: handleServerMessage,
   onLevel: (source, level) => {
+    if (!recorder.recording) return; // late batches after stop
     document.querySelector<HTMLElement>(`.meter[data-source="${source}"]`)?.style.setProperty("--level", String(Math.min(1, level * 3)));
   },
   onEnded: (reason) => {
     setRecording(false);
     setStatus(reason === "stopped" ? "Transcription stopped." : `Transcription stopped: ${reason}.`);
+    maybeAutoEnhance();
   },
 });
+
+/**
+ * Like Granola, write the notes automatically when a substantial meeting
+ * ends, but never overwrite notes that were already enhanced.
+ */
+const AUTO_ENHANCE_MIN_CHARS = 2500;
+function maybeAutoEnhance(): void {
+  if (!current || current.enhanced || enhancing) return;
+  let chars = 0;
+  for (const s of segments.values()) if (s.final) chars += s.text.length;
+  if (chars >= AUTO_ENHANCE_MIN_CHARS) void enhance();
+}
 
 // ---------------------------------------------------------------- api
 

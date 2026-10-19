@@ -22,7 +22,7 @@ const { values } = parseArgs({
 if (values.help) {
   console.log(`notewell — local meeting notes
 
-Usage: notewell-server [options]
+Usage: notewell [serve] [options]
   --port <n>             HTTP port (default 4747, env NOTEWELL_PORT)
   --host <addr>          Bind address (default 127.0.0.1; keep it on loopback)
   --whisper-model <id>   transformers.js Whisper model (default onnx-community/whisper-base)
