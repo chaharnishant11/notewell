@@ -1,12 +1,10 @@
 # 03 · AI enhancement: from rough notes and transcript to enhanced notes
 
-This page explains how Granola desktop **7.663.2** turns the notes a user types during a meeting,
-plus the transcript, into **enhanced notes**: what triggers a run, what the client sends, where the
-prompt lives, how the result streams back and renders, why some lines are gray and others black,
-how results are stored and regenerated, and, briefly, chat and the smaller LLM calls around it.
-
-The analysis is static: it reads the minified bundles and captures no network traffic (see
-[00 · Method](00-method.md)). Anything that happens on Granola's servers is **Inferred** at best.
+How Granola desktop **7.663.2** turns the notes a user types during a meeting, plus the
+transcript, into **enhanced notes**: triggers, request, prompt location, streaming and rendering,
+gray-versus-black provenance, storage and regeneration, and briefly chat and the smaller LLM calls.
+The analysis is static, with no network capture (see [00 · Method](00-method.md)), so anything that
+happens on Granola's servers is **Inferred** at best.
 
 ## TL;DR
 
@@ -65,16 +63,8 @@ equals the byte offset; `PRI` and `PP` contain non-ASCII text. Paths are relativ
 | `GEM` | `dist-app/assets/getEditorMarkdown-DM5P36g4.js` | Live editor to Markdown |
 | `VD` | `dist-app/assets/visibilityDescription-D8WmKwSO.js` | HTML-to-Markdown serializer |
 | `PGS` | `dist-app/assets/panelGenerationState-BPO3bayd.js` | Panel generation state |
-| `CON` | `dist-app/assets/constants-CD0tZHlZ.js` | Stream delimiter |
-| `LNK` | `dist-app/assets/link-DvBrxavF.js` | TipTap core helpers |
-| `UCR` | `dist-app/assets/useCombinedRef-CmoZ1f-l.js` | Legacy chat-model remap |
-| `UDES` | `dist-app/assets/useDocumentEditorSession-BiVvu_M6.js` | Notes editor session |
-| `PREF` | `dist-app/assets/preferencesStore-Biy5VxRw.js` | Developer slug overrides |
-| `MDI` | `dist-app/assets/markdown-it-Y_d_XJMo.js` | markdown-it, time constants |
-| `SSC` | `dist-app/assets/screenShareContextProcessing-b_GqW55N.js` | Screen-share description step |
-| `SNS` | `dist-app/assets/speakerNameSuggestions-CN21N0WQ.js` | Speaker-name suggestions |
-| `CSS` | `dist-app/assets/index-Dk_sNDSd.css` | App stylesheet |
-| `MAIN` | `dist-electron/main/index.js` | Electron main process |
+
+Files cited only once appear inline with their full path.
 
 ## 1. Pipeline at a glance
 
@@ -114,11 +104,10 @@ sequenceDiagram
 
 ### 2.1 Manual button
 
-- The meeting view shows **"Enhance notes"** or **"Generate notes"** depending on a state flag
-  (`PRI@3570055`) **(Observed)**.
-- Clicking calls the summary entry point (`wc` in `SS`, imported as `jb`, `PRI@34643`) with the
-  document id, the selected or pre-selected "temporary" template, any A/B assignment, and the
-  **live editor Markdown** (`PRI@4204818`) **(Observed)**.
+- The **"Enhance notes"** / **"Generate notes"** button (`PRI@3570055`) calls the summary entry
+  point (`wc` in `SS`, imported as `jb`, `PRI@34643`) with the document id, the selected or
+  pre-selected "temporary" template, any A/B assignment, and the **live editor Markdown**
+  (`PRI@4204818`) **(Observed)**.
 - Each run also starts screen-share context preparation in the background without awaiting it
   (`SS@82573`) **(Observed)**.
 
@@ -126,21 +115,18 @@ sequenceDiagram
 
 Stop in the meeting header (`PRI@4172601`) runs the stop handler (`SS@86128`). Thresholds:
 `SS@86565` (180 s), `SS@86858` (±300 s), `SS@85950` (10 s; the unit constant is 1,000 ms,
-`MDI@433`), `SS@87624` (2,500 characters). The whole flow is **Observed**.
+`dist-app/assets/markdown-it-Y_d_XJMo.js@433`), `SS@87624` (2,500 characters). The bypass flag is
+`always_generate_summary_when_transcription_stopped` (`SS@86683`). The whole flow is **Observed**.
 
 ```mermaid
 flowchart TD
-    A[Stop clicked] --> B{Panels already exist?}
-    B -- yes --> X[do nothing]
-    B -- no --> C{Any transcript?}
-    C -- no --> X
-    C -- yes --> D{First chunk at least 180 s old?}
+    A[Stop clicked] --> B{No panels yet and some transcript?}
+    B -- no --> X[do nothing]
+    B -- yes --> D{First chunk at least 180 s old?}
     D -- no --> X
-    D -- yes --> F{Flag always_generate_summary_when_transcription_stopped?}
+    D -- yes --> F{Bypass flag on, or within 5 min of calendar end?}
     F -- yes --> W
-    F -- no --> G{Now within 5 min of calendar end?}
-    G -- yes --> W
-    G -- no --> H{Flag llm_auto_stop on?}
+    F -- no --> H{Flag llm_auto_stop on?}
     H -- off --> W
     H -- on --> I{LLM did-meeting-end says SAID_BYE?}
     I -- no --> X
@@ -200,7 +186,7 @@ The body is assembled at `SS@80974`. Field contents are **Observed** unless mark
 | `document_id`, `panel_id`, `panel_title`, `last_viewed_at` | The placeholder panel just created; the title is the template title, else "Summary" (`SS@80290`) |
 | `prompt_slug` | Resolved slug (§2.4), after any developer remap (§4.2) |
 | `prompt_variables` | The variable dictionary (§3.2) with A/B overrides merged in |
-| `chat_history` | Images and screen-share context as chat-style messages (§3.5) |
+| `chat_history` | Images and screen-share context as chat-style messages (§3.4) |
 | `template_slug` | The panel's template id, if any |
 | `ydoc_state`, `ydoc_version` | A fresh Y.Doc seed (one empty paragraph in fragment `prosemirror`, `meta.hasSeed`, `SS@79213`), or the panel's existing local Yjs state on restart (`SS@80611`). Version from flag `partytime_ydoc_version` (`CA@44327`) |
 | `auto` | True for automatic runs |
@@ -222,7 +208,7 @@ single-meeting chat reuse it. All rows are **Observed**.
 |---|---|---|
 | `notes` | Live editor Markdown, else stored `notes_markdown`, else `notes_plain` | `GP@43323` |
 | `headers`, `urls` | Note lines starting with `#` (stripped, comma-joined); URLs in `notes_plain` | `GP@43830` |
-| `transcript` | Formatted transcript (§3.4) | `GP@43830` |
+| `transcript` | Formatted transcript (§3.3) | `GP@43830` |
 | `transcript_labels`, `transcript_labels_just_mic`, `has_room_labels` | Label style: `named`, `speaker_letters`, `me_them`, `just_mic`, `unlabeled` | `TSS@2618` |
 | `transcript_length`, `is_short_transcript`, `has_long_user_notes` | Length; under 200 chars; at least 20 non-empty note lines | `GP@43732` |
 | `calendar_event_title`, `date`, `time`, `todays_date` | Calendar event, else document title and `created_at`; time includes time zone | `GP@43830` |
@@ -259,15 +245,16 @@ Summary generation never includes other meetings **(Observed)**. A meeting-type 
 - Screen-share **descriptions** (not frames) are wrapped in a `<screen_share_context>` block
   (`API@41151`) that labels them machine-generated, untrusted evidence: never instructions, and
   lower priority than the transcript and notes on conflict **(Observed)**.
-- A separate vision step produces the descriptions, defaulting to `gemini-3.5-flash` (`SSC@7146`).
-  The default is visible but the routing is not **(Inferred)**.
+- A separate vision step produces the descriptions, defaulting to `gemini-3.5-flash`
+  (`dist-app/assets/screenShareContextProcessing-b_GqW55N.js@7146`). The default is visible but the
+  routing is not **(Inferred)**.
 
 ## 4. Server-side prompts and slugs
 
 ### 4.1 Slug registry
 
 The client ships **lists of slugs**, not prompt bodies; the same lists appear in main
-(`MAIN@459524`) **(Observed)**.
+(`dist-electron/main/index.js@459524`) **(Observed)**.
 
 | Group | Slugs (abridged) | Evidence |
 |---|---|---|
@@ -284,7 +271,7 @@ The client ships **lists of slugs**, not prompt bodies; the same lists appear in
 ### 4.2 Developer overrides and tracing
 
 - A developer preference maps a production slug to a dev slug that replaces `prompt_slug`
-  (`PREF@26714`, `API@261551`) **(Observed)**.
+  (`dist-app/assets/preferencesStore-Biy5VxRw.js@26714`, `API@261551`) **(Observed)**.
 - Chat completions carry `braintrustSpanId` / `braintrustTraceExport` (`API@41899`), chat requests
   can set `custom_braintrust_slug` (`PP@740060`), and view-source analytics still use
   `completion_id_vellum` (`PRI@3801355`) **(Observed)**. Prompts are probably versioned and traced in
@@ -313,8 +300,7 @@ Routes resolve through one map in `TY`; offsets point at each route's key **(Obs
 | Panel CRUD and recovery | `get-document-panels` (with `include_ydoc_state`), `create-document-panel`, `update-document-panel` | `TY@29571`, `TY@21756`, `TY@54500` |
 | One-shot LLM | `POST https://api.granola.ai/v1/llm-proxy` | `TY@40780`, `API@261551` |
 | Streamed small LLM | `POST https://stream.api.granola.ai/v1/llm-proxy-stream` | `TY@40830`, `API@263077` |
-| Chat | `POST https://stream.api.granola.ai/v1/chat-with-documents` (`-web` variant) | `TY@19833`, `API@277550` |
-| Chat models, citations | `get-chat-models`, `get-chat-citation` | `TY@27897`, `TY@27831` |
+| Chat | `POST https://stream.api.granola.ai/v1/chat-with-documents` (`-web` variant); `get-chat-models`, `get-chat-citation` | `TY@19833`, `API@277550`, `TY@27897`, `TY@27831` |
 | Templates | `get-panel-templates`, `create-panel-template`, `update-panel-template` | `TY@33087`, `TY@21920`, `TY@55279` |
 | Recipes | `get-recipes`, `upsert-recipe`, `delete-recipe`, `track-recipe-usage`, `update-user-saved-recipe` | `TY@33912`, `TY@56723` |
 | Experiments, feedback | `get-summary-comparison-assignment`, `get-summary-comparison-experiment`, `submit-summary-feedback` | `TY@34804`, `TY@51621` |
@@ -393,9 +379,10 @@ Headings can carry a `templateHeading` attribute, rendered as `data-template-hea
   flag `summary_gen_sonnet_4_6` (`CA@51037`) **(Inferred)**.
 - **Chat:** `prompt_config.model` comes from an enum (`API@223064`, `auto` added at `API@223905`),
   for example `auto`, `claude-5-5-sonnet`, `claude-opus-5-5`, `gpt-6-sol`,
-  `gemini-3-1-pro-thinking`, `grok-4-7` and `kimi-k3`. Legacy ids are remapped (`UCR@80801`),
-  groups and defaults come from `get-chat-models`, meeting and global chat keep separate selections
-  (`PP@590531`), and flag `chat_model_override` can force a model (`CA@28659`) **(Observed)**.
+  `gemini-3-1-pro-thinking`, `grok-4-7` and `kimi-k3`. Legacy ids are remapped
+  (`dist-app/assets/useCombinedRef-CmoZ1f-l.js@80801`), groups and defaults come from
+  `get-chat-models`, meeting and global chat keep separate selections (`PP@590531`), and flag
+  `chat_model_override` can force a model (`CA@28659`) **(Observed)**.
 - **Providers:** a tool-call replay schema names `anthropic`, `vertex-anthropic`, `bedrock`,
   `openai`, `xai`, `google`, `vertex-google` and `baseten` (`ES@9921`) **(Observed)**; routing is
   server-side **(Inferred)**.
@@ -406,9 +393,10 @@ Headings can carry a `templateHeading` attribute, rendered as `data-template-hea
 
 ### 9.1 Framing and event types
 
-The delimiter constant is `-----CHUNK_BOUNDARY-----` (`CON@1165`). Readers decode UTF-8, split on
-it, carry the trailing partial piece into the next read and parse each complete piece as JSON, over
-`fetch` with a `ReadableStream` rather than `EventSource`. The same framing serves
+The delimiter constant is `-----CHUNK_BOUNDARY-----`
+(`dist-app/assets/constants-CD0tZHlZ.js@1165`). Readers decode UTF-8, split on it, carry the
+trailing partial piece into the next read and parse each complete piece as JSON, over `fetch` with
+a `ReadableStream` rather than `EventSource`. The same framing serves
 `generate-summary` (`API@265965`), `llm-proxy-stream` and chat **(Observed)**. Events form a zod
 union on `type` (`API@246886`), dispatched at `API@266922` **(Observed)**:
 
@@ -459,7 +447,8 @@ On each `completion` frame **(Observed)**:
    half-written `**` or list marker never flickers (`SS@63302`).
 2. Render the rest with markdown-it (HTML, linkify, typographer, task lists; `CA@135094`).
 3. Dispatch an event with the panel id, the HTML and the current generated-lines set.
-4. Convert the HTML to ProseMirror JSON with TipTap's schema parser (`PRI@3819225`, `LNK@228288`).
+4. Convert the HTML to ProseMirror JSON with TipTap's schema parser (`PRI@3819225`,
+   `dist-app/assets/link-DvBrxavF.js@228288`).
 5. Paint with an animated read-only node renderer that auto-scrolls (`PRI@3777680`).
 
 The `ydoc` frame is decoded into a Y.Doc whose `prosemirror` fragment becomes the panel's
@@ -491,7 +480,8 @@ flowchart LR
   decorations comparing trimmed `textContent` (`PRI@3796135`); paragraphs via a node view
   **(Observed)**.
 - **Styling:** one rule colours `[data-generated=true]` in the static editor, panel editor and
-  generating view with `var(--color-secondary)` (`CSS@517108`) **(Observed)**.
+  generating view with `var(--color-secondary)` (`dist-app/assets/index-Dk_sNDSd.css@517108`)
+  **(Observed)**.
 - **Consequences (Inferred):** provenance is keyed on **text equality**, not node identity, so an
   edited gray line stops matching and turns black ("now mine"). Collaborators see the same colours
   because `generated_lines` is stored with the panel. "View source" (§13) is offered only on
@@ -514,25 +504,18 @@ Local SQLite `document_panels` is declared with drizzle (`CS@107358`) **(Observe
 
 - On completion the client writes `content`, `original_content`, `generated_lines` and
   `content_updated_at`, clears `generation_failed_at` and stores the Y.Doc (`SS@63425`). An FTS5
-  trigram index (`document_panels_fts`) makes panels searchable offline **(Observed)**.
+  trigram index, `document_panels_fts`, makes panels searchable offline
+  (`dist-app/assets/getAPIEndpointInWindow-Did_2krX.js@2112`) **(Observed)**.
 - The server creates and stores the panel during generation (it returns `panel_id` and later serves
   the panel with Yjs state from `get-document-panels`), so the local row is a cache and recovery
   path **(Inferred)**.
 
 ### 11.2 Generation state
 
-State is derived purely from three timestamps (`PGS@382`) **(Observed)**:
-
-```mermaid
-stateDiagram-v2
-    [*] --> idle
-    idle --> generating: generation_started_at set
-    generating --> completed: content_updated_at newer than start and failure
-    generating --> failed: generation_failed_at newer than start
-    generating --> failed: still generating after 180 s
-    failed --> generating: regenerate
-    completed --> generating: regenerate
-```
+Panel state is a pure function of three timestamps (`PGS@382`) **(Observed)**: **completed** if
+`content_updated_at` is newer than both start and failure; **failed** if `generation_failed_at` is
+newer than the start, or if generation began more than 180 s ago; **generating** if
+`generation_started_at` is set and recent; otherwise **idle**. No explicit status column is needed.
 
 ### 11.3 Regenerate and switching templates
 
@@ -578,12 +561,12 @@ All **Observed**. One-shot calls use `llm-proxy` and read `choices[0].message.co
 | Did the meeting end? | `did-meeting-end`, `llm-proxy` | Last 100 words; last of `SAID_BYE` / `DID_NOT_SAY_BYE` wins | `SS@58654` |
 | View source | `view-source-summary`, `llm-proxy-stream` | The note line, its `timestamp` and transcript windows (about 1,800 / 200 / 3,000 chars). Quotes link and scroll to the transcript; 😭 means "no relevant context" | `PRI@3801148`, `PRI@3799695`, `PRI@3801594` |
 | Slack summary | `slack-summary`, `llm-proxy` | Gathered variables plus Slack fields | `PRI@3663511` |
-| Speaker names | `speaker-name-suggestions`, `llm-proxy` | One `input` string; JSON name mappings with evidence quotes, then gated | `SNS@18932` |
+| Speaker names | `speaker-name-suggestions`, `llm-proxy` | One `input` string; JSON name mappings with evidence quotes, then gated | `dist-app/assets/speakerNameSuggestions-CN21N0WQ.js@18932` |
 | Chat thread title | `chat-thread-title`, `llm-proxy` | Thread variables | `API@261436` |
 
 View source relies on the `timestamp` the editor stamps on typed or pasted paragraphs (pastes also
-get `do-not-annotate`, `UDES@90661`), so note timestamps reach an LLM only on demand, never in the
-summary prompt **(Observed)**.
+get `do-not-annotate`, `dist-app/assets/useDocumentEditorSession-BiVvu_M6.js@90661`), so note
+timestamps reach an LLM only on demand, never in the summary prompt **(Observed)**.
 
 ## 14. Unknowns
 
@@ -608,8 +591,9 @@ summary prompt **(Observed)**.
 - **Templates as data with a heading budget.** `#Heading: instructions` lines plus a budget scaled
   to transcript length keep short meetings from being padded; make the budget monotonic, unlike the
   5-to-3 drop at 20,000 characters.
-- **Untrusted-data framing everywhere.** Granola frames only screen-share text this way;
-  transcripts and attachments deserve the same, because participants can say anything.
+- **Untrusted-data framing everywhere.** The only such framing visible in Granola's client is the
+  screen-share wrapper (server prompts are unknown); transcripts and attachments deserve the same,
+  because participants can say anything.
 - **Provenance from the generator.** Per-line "derived from the user's notes?" flags, applied as a
   node attribute or decoration (not a mark) and stored with the panel. Decide whether an edit should
   flip a line to "mine", as Granola's text-equality approach does.
