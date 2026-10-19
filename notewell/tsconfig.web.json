@@ -4,13 +4,13 @@
     "lib": ["es2022", "dom", "dom.iterable"],
     "module": "es2022",
     "moduleResolution": "bundler",
-    "rootDir": "src/web",
-    "outDir": "dist/web",
+    "rootDir": "src",
+    "outDir": "dist/public",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "sourceMap": true,
     "types": []
   },
-  "include": ["src/web"]
+  "include": ["src/web", "src/shared"]
 }

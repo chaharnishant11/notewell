@@ -12,10 +12,10 @@
     "notewell": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.web.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
-    "dev": "tsx src/server/main.ts",
+    "dev": "tsc -p tsconfig.web.json && tsx src/server/main.ts",
     "start": "node dist/server/main.js",
     "cli": "tsx src/cli.ts",
     "test:live": "vitest run --config vitest.live.config.ts"
