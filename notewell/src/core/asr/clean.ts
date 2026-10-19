@@ -25,8 +25,13 @@ export function cleanTranscriptText(raw: string, audioSeconds: number): string {
   // of a long sentence-length utterance is kept.
   if (audioSeconds < 2.5 && STOCK_PHRASES.has(text.toLowerCase())) return "";
   if (isRepetitionLoop(text)) return "";
+  // Fast speech is ~20 characters per second; far more text than the audio
+  // could hold means the decoder ran away.
+  if (audioSeconds > 0 && text.length > 12 && text.length / audioSeconds > MAX_CHARS_PER_SECOND) return "";
   return text;
 }
+
+const MAX_CHARS_PER_SECOND = 40;
 
 /** Detects decoder loops such as "the the the the the …". */
 function isRepetitionLoop(text: string): boolean {

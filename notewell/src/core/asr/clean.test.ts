@@ -8,6 +8,7 @@ describe("cleanTranscriptText", () => {
     ["♪♪", 2],
     [" Thank you.", 1.2],
     ["the the the the the the the the the", 5],
+    ["This sentence is far too long to have been spoken in half a second of audio.", 0.5],
   ])("drops non-speech %j", (raw, seconds) => {
     expect(cleanTranscriptText(raw, seconds)).toBe("");
   });

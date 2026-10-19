@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { OpenAIProvider } from "./openai.js";
-import { parseSse } from "./sse.js";
+import { parseSse } from "../../shared/sse.js";
 import { completeChat, LLMError } from "./types.js";
 
 async function* chunks(...parts: string[]): AsyncGenerator<Uint8Array> {

@@ -42,7 +42,9 @@ export function encodeAudioFrame(source: Source, pcm: Int16Array): ArrayBuffer {
 export function decodeAudioFrame(data: Uint8Array): { source: Source; pcm: Int16Array } | undefined {
   const source = TAG_SOURCE[data[0] ?? -1];
   if (!source || data.length < 3 || (data.length - 1) % 2 !== 0) return undefined;
-  // Copy so the Int16Array is aligned regardless of the incoming buffer offset.
-  const bytes = data.slice(1);
-  return { source, pcm: new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2) };
+  // Copy into a fresh buffer so the Int16Array is 2-byte aligned. (Node's
+  // Buffer.slice returns a view, so slice() alone is not enough.)
+  const bytes = new Uint8Array(data.length - 1);
+  bytes.set(data.subarray(1));
+  return { source, pcm: new Int16Array(bytes.buffer) };
 }

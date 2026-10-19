@@ -1,4 +1,4 @@
-import { parseSse } from "./sse.js";
+import { parseSse } from "../../shared/sse.js";
 import { LLMError, type ChatRequest, type LLMProvider } from "./types.js";
 
 export interface OpenAIProviderOptions {

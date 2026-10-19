@@ -119,8 +119,12 @@ export class Recorder {
 }
 
 async function captureMicrophone(): Promise<MediaStream> {
+  // "all" asks Chromium to cancel everything the machine plays (the meeting
+  // app's audio too), not only this tab's output; browsers that do not know
+  // the value fall back to normal echo cancellation because it is "ideal".
+  const echoCancellation = { ideal: "all" } as unknown as ConstrainBoolean;
   return navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+    audio: { echoCancellation, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
   });
 }
 

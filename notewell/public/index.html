@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notewell</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">Notewell</div>
+      <button id="new-meeting" class="primary">+ New meeting</button>
+      <ul id="meetings" class="meeting-list" aria-label="Meetings"></ul>
+      <p id="llm-status" class="muted small"></p>
+    </aside>
+
+    <main class="editor">
+      <div id="empty" class="empty">
+        <h1>Your meetings, written up.</h1>
+        <p>Start a meeting, jot rough notes while you listen, and let Notewell fill in the rest from a transcript that never leaves this computer.</p>
+      </div>
+
+      <section id="meeting" hidden>
+        <header class="meeting-header">
+          <input id="title" class="title" aria-label="Meeting title" autocomplete="off" />
+          <div class="record-controls">
+            <label class="toggle"><input type="checkbox" id="use-mic" checked /> Mic <span class="meter" data-source="microphone"></span></label>
+            <label class="toggle"><input type="checkbox" id="use-system" checked /> Meeting audio <span class="meter" data-source="system"></span></label>
+            <button id="record" class="record">● Start transcribing</button>
+          </div>
+        </header>
+
+        <details class="context-box">
+          <summary>Context <span class="muted">attendees, agenda, anything the AI should know</span></summary>
+          <textarea id="context" rows="3" placeholder="e.g. Weekly sync with Dana (design) and Lee (eng). Agenda: beta scope, launch date."></textarea>
+        </details>
+
+        <nav class="tabs" role="tablist">
+          <button role="tab" data-tab="notes" aria-selected="true">My notes</button>
+          <button role="tab" data-tab="enhanced" aria-selected="false">Enhanced</button>
+        </nav>
+
+        <textarea id="notes" class="notes" placeholder="Write rough notes as you go — a few words per point is plenty."></textarea>
+        <article id="enhanced" class="enhanced" hidden></article>
+
+        <footer class="enhance-bar">
+          <select id="template" aria-label="Template"></select>
+          <button id="enhance" class="primary">✦ Enhance notes</button>
+          <button id="copy" class="ghost" hidden>Copy Markdown</button>
+          <span id="status" class="muted small" role="status"></span>
+        </footer>
+      </section>
+    </main>
+
+    <aside class="transcript-panel" aria-label="Transcript">
+      <header>
+        <h2>Transcript</h2>
+        <span class="speaking" data-source="microphone" title="You are speaking">Me</span>
+        <span class="speaking" data-source="system" title="Others are speaking">Them</span>
+      </header>
+      <ol id="segments" class="segments"></ol>
+      <p id="transcript-empty" class="muted small">Transcribed locally with Whisper. Share a tab or window <em>with audio</em> to capture the other side of the call.</p>
+    </aside>
+
+    <script type="module" src="/app/web/app.js"></script>
+  </body>
+</html>
